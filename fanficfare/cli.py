@@ -21,6 +21,8 @@ from io import StringIO
 from optparse import OptionParser, SUPPRESS_HELP
 from os.path import expanduser, join, dirname
 from subprocess import call
+from collections import defaultdict
+from multiprocessing import Pool as mpPool
 import getpass
 import logging
 import pprint
@@ -308,18 +310,31 @@ def dispatch(options, urls,
         if len(urls) < 1:
             print("No valid story URLs found")
         else:
+            domains = defaultdict(list)
             for url in urls:
-                try:
-                    do_download(url,
-                                options,
-                                passed_defaultsini,
-                                passed_personalini,
-                                warn,
-                                fail)
-                except Exception as e:
-                    if len(urls) == 1:
-                        raise
-                    fail("URL(%s) Failed: Exception (%s). Run URL individually for more detail."%(url,e))
+                (cls,domain) = adapters._get_class_for(url)
+                domains[cls] += [url]
+            print(domains)
+            pool = mpPool(len(domains))
+            args = ((urls,options,passed_defaultsini,passed_personalini,warn,fail) for urls in domains.values())
+            result = pool.starmap(__dl_func, args)
+            pool.close()
+            pool.join()
+
+
+def __dl_func(urls, options, passed_defaultsini, passed_personalini, warn, fail):
+    for url in urls:
+        try:
+            do_download(url,
+                        options,
+                        passed_defaultsini,
+                        passed_personalini,
+                        warn,
+                        fail)
+        except Exception as e:
+            if len(urls) == 1:
+                raise
+            fail("URL(%s) Failed: Exception (%s). Run URL individually for more detail."%(url,e))
 
 def main(argv=None,
          parser=None,
